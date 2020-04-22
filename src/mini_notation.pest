@@ -5,13 +5,16 @@ bracketed_pattern = {
 }
 fast_repeat = { "[" ~ sequence ~ "]" }
 cycle = { "<" ~ sequence ~ ">" }
-sequence = { event~ (" "+ ~ event )+ }
+sequence = { event ~ (" "+ ~ event )+ }
 
-event = { bracketed_pattern | number | string }
+event = { modified_event | raw_event }
+modified_event = { raw_event ~ operator ~ number }
+raw_event = { bracketed_pattern | number | string }
+operator = { "*" | "/" | "!"}
 
 number = @{
     "-"?
     ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
     ~ ("." ~ ASCII_DIGIT*)?
 }
-string = { !(" ") ~ ANY }
+string = @{ (!(" ") ~ ASCII_ALPHANUMERIC)+ }

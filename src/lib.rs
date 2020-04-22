@@ -1,3 +1,4 @@
+#![feature(box_syntax)]
 use std::{
     collections::HashMap,
 };
@@ -6,6 +7,7 @@ use num::rational::Rational;
 extern crate pest_derive;
 
 pub mod mini_notation;
+pub mod sound;
 
 pub type Time = Rational;
 
@@ -59,7 +61,7 @@ impl<A: Clone> Pattern<A> for A {
 }
 impl<A: Clone> Pattern<A> for Box<dyn Pattern<A>> {
     fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        self.query(arc)
+        self.as_ref().query(arc)
     }
 }
 
@@ -141,8 +143,4 @@ impl<A> Pattern<A> for Cat<A> {
             result
         }).collect()
     }
-}
-
-pub struct FastCat<A> {
-    pub subpatterns: Vec<Box<dyn Pattern<A>>>,
 }

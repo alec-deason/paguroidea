@@ -1,0 +1,17 @@
+pattern = { sequence | bracketed_pattern }
+bracketed_pattern = {
+    fast_repeat |
+    cycle
+}
+fast_repeat = { "[" ~ sequence ~ "]" }
+cycle = { "<" ~ sequence ~ ">" }
+sequence = { event~ (" "+ ~ event )+ }
+
+event = { bracketed_pattern | number | string }
+
+number = @{
+    "-"?
+    ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
+    ~ ("." ~ ASCII_DIGIT*)?
+}
+string = { !(" ") ~ ANY }

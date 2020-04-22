@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 num = "0.2.1"
+pest = "2"
+pest_derive = "2"

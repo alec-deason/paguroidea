@@ -1,4 +1,11 @@
+use std::{
+    collections::HashMap,
+};
 use num::rational::Rational;
+#[macro_use]
+extern crate pest_derive;
+
+pub mod mini_notation;
 
 pub type Time = Rational;
 
@@ -28,6 +35,14 @@ impl<A: std::fmt::Debug> std::fmt::Debug for Event<A> {
 pub trait Pattern<A> {
     fn query(&self, arc: Arc) -> Vec<Event<A>>;
 }
+
+#[derive(Clone, Debug)]
+pub enum Value {
+    String(String),
+    Integer(isize),
+}
+#[derive(Clone, Debug)]
+pub struct ControlMap(pub HashMap<String, Value>);
 
 impl<A: Clone> Pattern<A> for A {
     fn query(&self, arc: Arc) -> Vec<Event<A>> {

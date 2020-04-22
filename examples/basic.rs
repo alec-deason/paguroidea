@@ -47,5 +47,5 @@ fn main() {
     let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
     println!("{:?}", events);
 
-    mini_notation::thing();
+    mini_notation::parse_pattern("[1 <2 3> 3]");
 }

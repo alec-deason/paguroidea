@@ -1,14 +1,16 @@
-use pest::{Parser};
+use pest::{Parser, iterators::Pair};
+
+use crate::{Pattern};
 
 #[derive(Parser)]
 #[grammar = "mini_notation.pest"]
 struct MiniNotationParser;
 
-pub fn thing() {
-    let pattern = MiniNotationParser::parse(Rule::pattern, "[1 <2 3> 3]").unwrap_or_else(|e| panic!("{}", e));
+pub fn parse_pattern(input: &str) -> Pattern<String> {
+    let pattern = MiniNotationParser::parse(Rule::pattern, input).unwrap_or_else(|e| panic!("{}", e));
+    _parse_pattern(pattern)
+}
 
-    for event in pattern {
-        println!("{:?}", event);
-    }
-
+fn _parse_pattern(pair: Pair<Rule>) -> Pattern<String> {
+    "thing"
 }

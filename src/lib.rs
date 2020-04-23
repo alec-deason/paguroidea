@@ -1,5 +1,6 @@
 #![feature(box_syntax)]
 use std::{
+    convert::TryInto,
     collections::HashMap,
 };
 use num::rational::Rational;
@@ -34,7 +35,7 @@ impl<A: std::fmt::Debug> std::fmt::Debug for Event<A> {
     }
 }
 
-pub trait Pattern<A> {
+pub trait Pattern<A>: std::fmt::Debug {
     fn query(&self, arc: Arc) -> Vec<Event<A>>;
 }
 
@@ -43,40 +44,55 @@ pub enum Value {
     String(String),
     Integer(isize),
 }
+
+impl TryInto<String> for Value {
+    type Error = ();
+    fn try_into(self) -> Result<String, Self::Error> {
+        match self {
+            Value::String(v) => Ok(v),
+            _ => Err(())
+        }
+    }
+}
+
+impl TryInto<isize> for Value {
+    type Error = ();
+    fn try_into(self) -> Result<isize, Self::Error> {
+        match self {
+            Value::Integer(v) => Ok(v),
+            _ => Err(())
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ControlMap(pub HashMap<String, Value>);
 
-impl<A: Clone> Pattern<A> for A {
+impl<A: Clone + std::fmt::Debug> Pattern<A> for A {
     fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        let start:isize = arc.start.ceil().to_integer();
-        let stop:isize = arc.stop.floor().to_integer();
-        (start..stop).map(|t| {
-            Event {
-                whole: Some(Arc { start: t.into(), stop: (t+ 1).into() }),
-                part: Arc { start: t.into(), stop: (t + 1).min(stop).into() },
-                value: self.clone(),
-            }
+        arc_cycles_zw(arc).into_iter().filter_map(|a| {
+            if arc.start.is_integer() {
+                Some(Event {
+                    whole: Some(Arc { start: a.start, stop: a.start + 1 }),
+                    part: Arc { start: a.start, stop: (a.start + 1).min(a.stop) },
+                    value: self.clone(),
+                })
+            } else { None }
         }).collect()
     }
 }
-impl<A: Clone> Pattern<A> for Box<dyn Pattern<A>> {
+impl<A: Clone + std::fmt::Debug> Pattern<A> for Box<dyn Pattern<A> + Send> {
     fn query(&self, arc: Arc) -> Vec<Event<A>> {
         self.as_ref().query(arc)
     }
 }
 
-pub struct Silence;
-impl<A> Pattern<A> for Silence {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        vec![]
-    }
-}
-
-pub struct Fast<A> {
+#[derive(Debug)]
+pub struct Fast<A> where A:Send+std::fmt::Debug {
     pub speed: Rational,
-    pub pattern: Box<dyn Pattern<A>>,
+    pub pattern: Box<dyn Pattern<A> + Send>,
 }
-impl<A> Pattern<A> for Fast<A> {
+impl<A: Send+std::fmt::Debug> Pattern<A> for Fast<A> {
     fn query(&self, arc: Arc) -> Vec<Event<A>> {
         let arc = Arc {
             start: arc.start * self.speed,
@@ -95,8 +111,9 @@ impl<A> Pattern<A> for Fast<A> {
     }
 }
 
-pub struct Cat<A> {
-    pub subpatterns: Vec<Box<dyn Pattern<A>>>,
+#[derive(Debug)]
+pub struct Cat<A> where A:Send+std::fmt::Debug {
+    pub subpatterns: Vec<Box<dyn Pattern<A> + Send>>,
 }
 
 fn arc_cycles(arc: Arc) -> Vec<Arc> {
@@ -119,13 +136,13 @@ fn arc_cycles_zw(arc: Arc) -> Vec<Arc> {
     }
 }
 
-impl<A> Pattern<A> for Cat<A> {
+impl<A: Send+std::fmt::Debug> Pattern<A> for Cat<A> {
     fn query(&self, arc: Arc) -> Vec<Event<A>> {
         arc_cycles_zw(arc).into_iter().flat_map(|a| {
             let n:Rational = (self.subpatterns.len() as isize).into();
             let cyc = a.start.floor();
             let i: Rational = cyc % n;
-            let offset: Rational = cyc - ((cyc - i) / n);
+            let offset: Rational = (cyc - ((cyc - i) / n)).floor();
             let i:usize = i.to_integer() as usize;
             let a = Arc {
                 start: a.start - offset,
@@ -141,6 +158,23 @@ impl<A> Pattern<A> for Cat<A> {
                 });
             }
             result
+        }).collect()
+    }
+}
+
+#[derive(Debug)]
+pub struct Sound(pub Box<dyn Pattern<String> + Send>);
+impl Pattern<ControlMap> for Sound {
+    fn query(&self, arc: Arc) -> Vec<Event<ControlMap>> {
+        self.0.query(arc).into_iter().map(|e| {
+            let mut m = ControlMap(HashMap::new());
+            m.0.insert("s".to_string(), Value::String(e.value));
+            m.0.insert("n".to_string(), Value::Integer(0));
+            Event {
+                whole: e.whole,
+                part: e.part,
+                value: m,
+            }
         }).collect()
     }
 }

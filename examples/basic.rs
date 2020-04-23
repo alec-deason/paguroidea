@@ -56,8 +56,8 @@ fn main() {
     let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
     println!("{:?}", events);
 
-    let pattern = mini_notation::parse_pattern("bd <cp*2 bd*2> [cp bd]");
-    let events = pattern.query(Arc { start: 0.into(), stop: 6.into() });
+    let pattern = mini_notation::parse_pattern("bd cp <cp bd>");
+    let events = pattern.query(Arc { start: 0.into(), stop: 12.into() });
     let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
     println!("{:?}", events);
 
@@ -73,12 +73,9 @@ fn main() {
     samples.add_sample_set("cp", vec![data]);
     let player = sound::Player::new(samples);
 
-    let pattern = mini_notation::parse_pattern("bd cp*2 bd cp");
-    let mut current: Rational = 0.into();
-    for event in &pattern.query(Arc { start: 0.into(), stop: 12.into() }) {
-        let gap = ((event.part.start - current) * 1000).to_integer() as u64;
-        std::thread::sleep(std::time::Duration::from_millis(gap));
-        current = event.part.start;
-        player.play_sample(&event.value);
-    }
+    let pattern = Sound(box mini_notation::parse_pattern("bd cp <cp bd>"));
+    println!("Pattern: {:#?}", pattern);
+    player.set_pattern("d1", pattern);
+    player.start_playback();
+    std::thread::sleep(std::time::Duration::from_millis(12000));
 }

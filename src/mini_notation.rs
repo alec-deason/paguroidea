@@ -10,12 +10,12 @@ use crate::{Pattern, Fast, Cat};
 #[grammar = "mini_notation.pest"]
 struct MiniNotationParser;
 
-pub fn parse_pattern(input: &str) -> Box<dyn Pattern<String>> {
+pub fn parse_pattern(input: &str) -> Box<dyn Pattern<String> + Send> {
     let pattern = MiniNotationParser::parse(Rule::pattern, input).unwrap_or_else(|e| panic!("{}", e)).next().unwrap();
     _parse_pattern(pattern)
 }
 
-fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String>> {
+fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String> + Send> {
     match pair.as_rule() {
         Rule::fast_repeat => {
             let sequence: Vec<_> = pair.into_inner().next().unwrap().into_inner().map(_parse_pattern).collect();
@@ -26,7 +26,7 @@ fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String>> {
             box Fast { speed: (sequence.len() as isize).into(), pattern: box Cat { subpatterns: sequence } }
         },
         Rule::cycle => {
-            let sequence: Vec<_> = pair.into_inner().map(_parse_pattern).collect();
+            let sequence: Vec<_> = pair.into_inner().next().unwrap().into_inner().map(_parse_pattern).collect();
             box Cat { subpatterns: sequence }
         },
 
@@ -54,6 +54,7 @@ fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String>> {
         Rule::pattern |
         Rule::bracketed_pattern |
         Rule::event => _parse_pattern(pair.into_inner().next().unwrap()),
+
         Rule::string => box pair.as_str().to_string(),
 
         Rule::number => todo!(),

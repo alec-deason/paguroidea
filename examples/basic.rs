@@ -1,5 +1,9 @@
 #![feature(box_syntax)]
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io::Read,
+    fs::File, io::BufReader,
+};
 use num::rational::Rational;
 
 use paguroidea::*;
@@ -57,7 +61,17 @@ fn main() {
     let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
     println!("{:?}", events);
 
-    let player = sound::Player::new();
+    let mut samples = sound::SampleBank::new();
+    let mut file = File::open("/home/alec/.local/share/SuperCollider/downloaded-quarks/Dirt-Samples/bd/BT0A0A7.wav").unwrap();
+    let mut data = vec![];
+    file.read_to_end(&mut data);
+    samples.add_sample_set("bd", vec![data]);
+
+    let mut file = File::open("/home/alec/.local/share/SuperCollider/downloaded-quarks/Dirt-Samples/cp/HANDCLP0.wav").unwrap();
+    let mut data = vec![];
+    file.read_to_end(&mut data);
+    samples.add_sample_set("cp", vec![data]);
+    let player = sound::Player::new(samples);
 
     let pattern = mini_notation::parse_pattern("bd cp*2 bd cp");
     let mut current: Rational = 0.into();

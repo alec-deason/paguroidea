@@ -1,8 +1,6 @@
 use {
     std::{
-        io::Read,
         collections::HashMap,
-        fs::File, io::BufReader,
     },
 
     rodio::{Source, Device},
@@ -10,23 +8,28 @@ use {
 
 pub struct Player {
     device: Device,
-    samples: HashMap<String, std::sync::Arc<[u8]>>,
+    samples: SampleBank,
 }
 
-impl Player {
+pub struct SampleBank(HashMap<String, Vec<std::sync::Arc<[u8]>>>);
+impl SampleBank {
     pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn add_sample_set(&mut self, name: impl AsRef<str>, samples: Vec<Vec<u8>>) {
+        self.0.insert(
+            name.as_ref().to_string(),
+            samples.into_iter().map(|s| std::sync::Arc::from(s)).collect()
+        );
+    }
+}
+
+
+impl Player {
+    pub fn new(samples: SampleBank) -> Self {
         let device = rodio::default_output_device().unwrap();
-        let mut samples = HashMap::new();
 
-        let mut file = File::open("/home/alec/.local/share/SuperCollider/downloaded-quarks/Dirt-Samples/bd/BT0A0A7.wav").unwrap();
-        let mut data = vec![];
-        file.read_to_end(&mut data);
-        samples.insert("bd".to_string(), std::sync::Arc::from(data));
-
-        let mut file = File::open("/home/alec/.local/share/SuperCollider/downloaded-quarks/Dirt-Samples/cp/HANDCLP0.wav").unwrap();
-        let mut data = vec![];
-        file.read_to_end(&mut data);
-        samples.insert("cp".to_string(), std::sync::Arc::from(data));
         Self {
             device,
             samples
@@ -34,8 +37,9 @@ impl Player {
     }
 
     pub fn play_sample(&self, sample: &str) {
-        let sample = self.samples[sample].clone();
-        let sound = rodio::Decoder::new(std::io::Cursor::new(sample)).unwrap();
-        rodio::play_raw(&self.device, sound.convert_samples());
+        if let Some(sample) = self.samples.0.get(sample) {
+            let sound = rodio::Decoder::new(std::io::Cursor::new(sample[0].clone())).unwrap();
+            rodio::play_raw(&self.device, sound.convert_samples());
+        }
     }
 }

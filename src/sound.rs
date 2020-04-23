@@ -80,7 +80,6 @@ impl Player {
                         }));
                     }
                     pending_events.sort_by_key(|e| e.part.start);
-                    println!("{:?}, {:?}", player.patterns.keys(), pending_events);
                 }
                 for event in pending_events.drain(..) {
                     let gap = ((event.part.start - current) * 1000).to_integer().max(0) as u64;

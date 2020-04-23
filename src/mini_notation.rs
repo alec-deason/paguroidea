@@ -31,7 +31,6 @@ fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String> + Send> {
         },
 
         Rule::modified_event => {
-            println!("{:?}", pair);
             let mut inner = pair.into_inner();
             let event = _parse_pattern(inner.next().unwrap());
             let operator = inner.next().unwrap();

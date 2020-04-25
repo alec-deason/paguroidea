@@ -391,7 +391,7 @@ fn time_rand(t: Time) -> f32 {
 
 //FIXME: this should take a f32 pattern not a static value
 #[derive(Clone, Debug)]
-pub struct Sometimes<A>(pub Box<dyn Pattern<A>>, pub Box<dyn Pattern<A>>, f32) where A: std::fmt::Debug;
+pub struct Sometimes<A>(pub Box<dyn Pattern<A>>, pub Box<dyn Pattern<A>>, pub f32) where A: std::fmt::Debug;
 impl<A: Send+std::fmt::Debug + Clone + 'static> Pattern<A> for Sometimes<A> {
     fn query(&self, arc: Arc) -> Vec<Event<A>> {
         let mut results: Vec<_> = self.0.query(arc).into_iter()

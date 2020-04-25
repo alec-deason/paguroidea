@@ -85,7 +85,7 @@ fn main() {
         box Rational::from((1,4)),
     );
     */
-   let pattern = Sometimes(box Sound(box mini_notation::parse_pattern("bd bd bd bd bd")), box Sound(box mini_notation::parse_pattern("cp cp cp")), box 0.5);
+   let pattern = Sometimes(box Sound(box mini_notation::parse_pattern("bd bd bd bd bd")), box Sound(box mini_notation::parse_pattern("cp cp cp")), box 0.75);
 
     //let pattern = Sound(box mini_notation::parse_pattern("bd bd cp cp bd cp"));
     let events = pattern.query(Arc { start: 0.into(), stop: 12.into() });

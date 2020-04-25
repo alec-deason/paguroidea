@@ -5,7 +5,7 @@ bracketed_pattern = {
 }
 fast_repeat = { "[" ~ sequence ~ "]" }
 cycle = { "<" ~ sequence ~ ">" }
-sequence = { event ~ (" "+ ~ event )+ }
+sequence = { event ~ (" "+ ~ event )* }
 
 event = { modified_event | raw_event }
 modified_event = { raw_event ~ operator ~ number }

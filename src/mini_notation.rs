@@ -10,12 +10,12 @@ use crate::{Pattern, Fast, Cat};
 #[grammar = "mini_notation.pest"]
 struct MiniNotationParser;
 
-pub fn parse_pattern(input: &str) -> Box<dyn Pattern<String> + Send> {
+pub fn parse_pattern(input: &str) -> Box<dyn Pattern<String>> {
     let pattern = MiniNotationParser::parse(Rule::pattern, input).unwrap_or_else(|e| panic!("{}", e)).next().unwrap();
     _parse_pattern(pattern)
 }
 
-fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String> + Send> {
+fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String>> {
     match pair.as_rule() {
         Rule::fast_repeat => {
             let sequence: Vec<_> = pair.into_inner().next().unwrap().into_inner().map(_parse_pattern).collect();

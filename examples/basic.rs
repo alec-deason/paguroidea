@@ -11,12 +11,12 @@ use paguroidea::*;
 fn main() {
     let pattern = 1;
     let events = pattern.query(Arc { start: 0.into(), stop: 3.into() });
-    let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
+    let events:Vec<_> = events.into_iter().map(|e:Event<u32>| e.value).collect();
     println!("{:?}", events);
 
     let pattern = "one".to_string();
     let events = pattern.query(Arc { start: 0.into(), stop: 3.into() });
-    let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
+    let events:Vec<_> = events.into_iter().map(|e:Event<String>| e.value).collect();
     println!("{:?}", events);
 
     let pattern = Fast {
@@ -24,7 +24,7 @@ fn main() {
         pattern: box 1
     };
     let events = pattern.query(Arc { start: 0.into(), stop: 3.into() });
-    let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
+    let events:Vec<u32> = events.into_iter().map(|e:Event<u32>| e.value).collect();
     println!("{:?}", events);
 
     let pattern = Fast {
@@ -32,13 +32,13 @@ fn main() {
         pattern: box 1
     };
     let events = pattern.query(Arc { start: 0.into(), stop: 3.into() });
-    let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
+    let events:Vec<_> = events.into_iter().map(|e:Event<u32>| e.value).collect();
     println!("{:?}", events);
 
 
     let pattern = Cat { subpatterns: vec![box 2, box 1] };
     let events = pattern.query(Arc { start: 0.into(), stop: 6.into() });
-    let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
+    let events:Vec<_> = events.into_iter().map(|e:Event<u32>| e.value).collect();
     println!("{:?}", events);
 
     let pattern = Fast {
@@ -46,19 +46,19 @@ fn main() {
         pattern: box Cat { subpatterns: vec![box 2, box 1] },
     };
     let events = pattern.query(Arc { start: 0.into(), stop: 6.into() });
-    let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
+    let events:Vec<_> = events.into_iter().map(|e:Event<u32>| e.value).collect();
     println!("{:?}", events);
 
     let mut pattern = ControlMap(HashMap::new());
     pattern.0.insert("s".to_string(), Value::String("db".to_string()));
     pattern.0.insert("n".to_string(), Value::Integer(1));
     let events = pattern.query(Arc { start: 0.into(), stop: 3.into() });
-    let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
+    let events:Vec<_> = events.into_iter().map(|e:Event<ControlMap>| e.value).collect();
     println!("{:?}", events);
 
     let pattern = mini_notation::parse_pattern("bd cp <cp bd>");
     let events = pattern.query(Arc { start: 0.into(), stop: 12.into() });
-    let events:Vec<_> = events.into_iter().map(|e| e.value).collect();
+    let events:Vec<_> = events.into_iter().map(|e:Event<String>| e.value).collect();
     println!("{:?}", events);
 
     let mut samples = sound::SampleBank::new();
@@ -73,7 +73,19 @@ fn main() {
     samples.add_sample_set("cp", vec![data]);
     let player = sound::Player::new(samples);
 
-    let pattern = Sound(box mini_notation::parse_pattern("bd cp <cp bd>"));
+    let pattern = Sound(box Stack(vec![
+        box mini_notation::parse_pattern("bd cp <cp bd>"),
+        box mini_notation::parse_pattern("bd"),
+    ]));
+
+    let pattern = jux_by(1.0, |p| {
+        box Rev(p.clone_box())
+    }, Sound(box mini_notation::parse_pattern("bd cp")));
+    
+    //let pattern = Sound(box mini_notation::parse_pattern("bd bd cp cp bd cp"));
+    let events = pattern.query(Arc { start: 0.into(), stop: 12.into() });
+    let events:Vec<_> = events.into_iter().map(|e:Event<ControlMap>| e.value).collect();
+    println!("{:?}", events);
     println!("Pattern: {:#?}", pattern);
     player.set_pattern("d1", pattern);
     player.start_playback();

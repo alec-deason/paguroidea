@@ -21,9 +21,15 @@ struct InnerPlayer {
     patterns: HashMap<String, Box<dyn Pattern<ControlMap> + Send>>,
 }
 impl InnerPlayer {
-    fn play_sample(&self, sample: &str, variation: usize) {
-        if let Some(sample) = self.samples.0.get(sample) {
-            let sound = rodio::Decoder::new(std::io::Cursor::new(sample[variation].clone())).unwrap();
+    fn play_sample(&self, sample: &str, variation: usize, pan: f32) {
+        if let Some(variations) = self.samples.0.get(sample) {
+            let sound = rodio::Decoder::new(std::io::Cursor::new(variations[variation].clone())).unwrap();
+            let sound = rodio::source::Spatial::new(
+                sound,
+                [pan, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0]
+            );
             rodio::play_raw(&self.device, sound.convert_samples());
         }
     }
@@ -65,7 +71,7 @@ impl Player {
     pub fn start_playback(&self) {
         let player = self.inner.clone();
         std::thread::spawn(move || {
-            let pattern_sample_granularity: Rational = (1, 30).into();
+            let pattern_sample_granularity: Rational = (1, 1).into();
             let mut current: Rational = 0.into();
             let mut pending_events:Vec<Event<ControlMap>> = vec![];
             loop {
@@ -73,8 +79,7 @@ impl Player {
                 {
                     let player = player.lock().unwrap();
                     for pattern in player.patterns.values() {
-                        //FIXME: I don't really understand why I need the as_ref here
-                        pending_events.extend(pattern.as_ref().query(Arc {
+                        pending_events.extend(pattern.query(Arc {
                             start: current,
                             stop: next,
                         }));
@@ -88,7 +93,8 @@ impl Player {
                     current = event.part.start;
                     let sample:String = event.value.0["s"].clone().try_into().unwrap();
                     let variation:isize = event.value.0["n"].clone().try_into().unwrap();
-                    player.lock().unwrap().play_sample(&sample, variation as usize);
+                    let pan: f32 = event.value.0.get("pan").and_then(|v| v.clone().try_into().ok()).unwrap_or(0.5);
+                    player.lock().unwrap().play_sample(&sample, variation as usize, pan);
                 }
                 let gap = ((next - current) * 1000).to_integer().max(0) as u64;
                 std::thread::sleep(std::time::Duration::from_millis(gap));

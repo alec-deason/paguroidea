@@ -3,6 +3,7 @@ use std::{
     convert::TryInto,
     collections::HashMap,
 };
+use rand::{rngs::StdRng, SeedableRng, Rng};
 use num::rational::Rational;
 #[macro_use]
 extern crate pest_derive;
@@ -373,6 +374,30 @@ impl<A: Send+std::fmt::Debug + Clone + 'static> Pattern<A> for Rev<A> {
                 })
             );
         }
+        results
+    }
+}
+
+fn time_rand(t: Time) -> f32 {
+    let x = (t*t) / 1000000;
+    //TODO: Uh. Understand what this does in a bunch of cases. It's probably pretty "random" sometimes
+    // Also it obviously throws away information when the numbers are large but they normally won't be so maybe that doesn't matter. Also this is not crypto and not a place where pattern artifacts will be very visible.
+    let mut seed = [0; 32];
+    seed[0] = *x.numer() as u8;
+    seed[1] = *x.denom() as u8;
+    let mut rng:StdRng = StdRng::from_seed(seed);
+    rng.gen()
+}
+
+#[derive(Clone, Debug)]
+pub struct Sometimes<A>(pub Box<dyn Pattern<A>>, pub Box<dyn Pattern<A>>, pub Box<dyn Pattern<f32>>) where A: std::fmt::Debug;
+impl<A: Send+std::fmt::Debug + Clone + 'static> Pattern<A> for Sometimes<A> {
+    fn query(&self, arc: Arc) -> Vec<Event<A>> {
+        let mut results: Vec<_> = self.0.query(arc).into_iter()
+            .filter(|e| time_rand(e.part.start) > 0.5).chain(
+                self.1.query(arc).into_iter()
+                .filter(|e| time_rand(e.part.start) <= 0.5)).collect();
+        results.sort_by_key(|e| e.part.start);
         results
     }
 }

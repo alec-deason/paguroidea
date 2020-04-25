@@ -87,7 +87,7 @@ impl Player {
                     pending_events.sort_by_key(|e| e.part.start);
                 }
                 for event in pending_events.drain(..) {
-                    let gap = ((event.part.start - current) * 1000).to_integer().max(0) as u64;
+                    let gap = ((event.part.start - current) * 1000).to_integer().max(0) as u64 * 2;
                     //FIXME: check that we didn't wake early
                     std::thread::sleep(std::time::Duration::from_millis(gap));
                     current = event.part.start;
@@ -96,7 +96,7 @@ impl Player {
                     let pan: f32 = event.value.0.get("pan").and_then(|v| v.clone().try_into().ok()).unwrap_or(0.5);
                     player.lock().unwrap().play_sample(&sample, variation as usize, pan);
                 }
-                let gap = ((next - current) * 1000).to_integer().max(0) as u64;
+                let gap = ((next - current) * 1000).to_integer().max(0) as u64 * 2;
                 std::thread::sleep(std::time::Duration::from_millis(gap));
                 current = next;
             }

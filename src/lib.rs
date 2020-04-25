@@ -329,6 +329,7 @@ impl<A: Send+std::fmt::Debug + Clone + 'static> Pattern<A> for Rev<A> {
                 self.0.query(a).into_iter().map(|e| {
                     let (new_start, nev_stop) = (mid - (e.part.stop-mid), (mid+(mid-e.part.start)));
                     Event {
+                        //FXME: I don't really understand what 'whole' is for and this is certainly not handling it corectly
                         whole: e.whole,
                         part: Arc {
                             start: new_start,

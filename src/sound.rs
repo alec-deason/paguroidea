@@ -3,6 +3,9 @@ use {
         convert::TryInto,
         collections::HashMap,
         sync::Mutex,
+        path::Path,
+        io::Read,
+        fs::File, io::BufReader,
     },
 
     num::Rational,
@@ -46,6 +49,26 @@ impl SampleBank {
             name.as_ref().to_string(),
             samples.into_iter().map(|s| std::sync::Arc::from(s)).collect()
         );
+    }
+
+    pub fn add_sample_set_from_dir(&mut self, name: impl AsRef<str>, path: impl AsRef<Path>) {
+        let mut samples = vec![];
+        for p in std::fs::read_dir(path).unwrap() {
+            let mut file = File::open(p.unwrap().path()).unwrap();
+            let mut data = vec![];
+            file.read_to_end(&mut data);
+            samples.push(data);
+        }
+        self.add_sample_set(name, samples);
+    }
+
+    pub fn add_sample_sets_from_dir(&mut self, path: impl AsRef<Path>) {
+        for p in std::fs::read_dir(path).unwrap() {
+            let p = p.unwrap();
+            if p.path().is_dir() {
+                self.add_sample_set_from_dir(p.file_name().into_string().unwrap(), p.path());
+            }
+        }
     }
 }
 

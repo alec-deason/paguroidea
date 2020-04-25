@@ -17,4 +17,4 @@ number = @{
     ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
     ~ ("." ~ ASCII_DIGIT*)?
 }
-string = @{ (!(" ") ~ ASCII_ALPHANUMERIC)+ }
+string = @{ (!(" ") ~ ASCII_ALPHANUMERIC | ":" | "~")+ }

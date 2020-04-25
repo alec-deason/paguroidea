@@ -201,10 +201,15 @@ impl<A: Send+std::fmt::Debug+Clone+'static> Pattern<A> for Cat<A> {
 pub struct Sound(pub Box<dyn Pattern<String>>);
 impl Pattern<ControlMap> for Sound {
     fn query(&self, arc: Arc) -> Vec<Event<ControlMap>> {
-        self.0.query(arc).into_iter().map(|e| {
+        self.0.query(arc).into_iter().map(|e: Event<String>| {
             let mut m = ControlMap(HashMap::new());
-            m.0.insert("s".to_string(), Value::String(e.value));
-            m.0.insert("n".to_string(), Value::Integer(0));
+            let parts:Vec<_> = e.value.split(":").collect();
+            m.0.insert("s".to_string(), Value::String(parts[0].to_string()));
+            if parts.len() > 1 {
+                m.0.insert("n".to_string(), Value::Integer(parts[1].parse().unwrap()));
+            } else {
+                m.0.insert("n".to_string(), Value::Integer(0));
+            }
             Event {
                 whole: e.whole,
                 part: e.part,

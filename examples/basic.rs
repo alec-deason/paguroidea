@@ -62,15 +62,8 @@ fn main() {
     println!("{:?}", events);
 
     let mut samples = sound::SampleBank::new();
-    let mut file = File::open("/home/alec/.local/share/SuperCollider/downloaded-quarks/Dirt-Samples/bd/BT0A0A7.wav").unwrap();
-    let mut data = vec![];
-    file.read_to_end(&mut data);
-    samples.add_sample_set("bd", vec![data]);
-
-    let mut file = File::open("/home/alec/.local/share/SuperCollider/downloaded-quarks/Dirt-Samples/cp/HANDCLP0.wav").unwrap();
-    let mut data = vec![];
-    file.read_to_end(&mut data);
-    samples.add_sample_set("cp", vec![data]);
+    samples.add_sample_sets_from_dir("/home/alec/.local/share/SuperCollider/downloaded-quarks/Dirt-Samples/");
+    samples.add_sample_sets_from_dir("/home/alec/tidal/samples-extra/");
     let player = sound::Player::new(samples);
 
     let pattern = Sound(box Stack(vec![
@@ -85,7 +78,7 @@ fn main() {
         box Rational::from((1,4)),
     );
     */
-   let pattern = Sometimes(box Sound(box mini_notation::parse_pattern("bd bd bd bd bd")), box Sound(box mini_notation::parse_pattern("cp cp cp")), 0.25);
+   let pattern = Sound(box mini_notation::parse_pattern("<hi:1 hi*2> <~ hi:3 lo:2*2 hi*2> <~ lo:3*2 hi> <lo:1 lo:3*2>"));
 
     //let pattern = Sound(box mini_notation::parse_pattern("bd bd cp cp bd cp"));
     let events = pattern.query(Arc { start: 0.into(), stop: 12.into() });

@@ -78,10 +78,13 @@ fn main() {
         box mini_notation::parse_pattern("bd"),
     ]));
 
-    let pattern = jux_by(1.0, |p| {
-        box Rev(p.clone_box())
-    }, Sound(box mini_notation::parse_pattern("bd cp")));
-    
+    let pattern = Off(
+        box Sound(box mini_notation::parse_pattern("bd bd cp")),
+        box Rev(box Sound(box mini_notation::parse_pattern("bd bd cp"))),
+        box Rational::from((1,4)),
+    );
+   //let pattern = Sound(box mini_notation::parse_pattern("bd bd cp"));
+
     //let pattern = Sound(box mini_notation::parse_pattern("bd bd cp cp bd cp"));
     let events = pattern.query(Arc { start: 0.into(), stop: 12.into() });
     let events:Vec<_> = events.into_iter().map(|e:Event<ControlMap>| e.value).collect();

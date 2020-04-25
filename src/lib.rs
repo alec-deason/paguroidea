@@ -172,7 +172,10 @@ impl<A: Send+std::fmt::Debug+Clone+'static> Pattern<A> for Cat<A> {
         arc_cycles_zw(arc).into_iter().flat_map(|a| {
             let n:Rational = (self.subpatterns.len() as isize).into();
             let cyc = a.start.floor();
-            let i: Rational = cyc % n;
+            let mut i: Rational = cyc % n;
+            while i < 0.into() {
+                i += n;
+            }
             let offset: Rational = (cyc - ((cyc - i) / n)).floor();
             let i:usize = i.to_integer() as usize;
             let a = Arc {
@@ -296,6 +299,36 @@ pub fn jux_by(n: impl Pattern<f32>, f: impl Fn(&dyn Pattern<ControlMap>) -> Box<
             rhs: n.clone_box(),
         },
     ])
+}
+
+#[derive(Clone, Debug)]
+pub struct Off<A>(pub Box<dyn Pattern<A>>, pub Box<dyn Pattern<A>>, pub Box<dyn Pattern<Time>>) where A: std::fmt::Debug;
+impl<A: Send+std::fmt::Debug + Clone + 'static> Pattern<A> for Off<A> {
+    fn query(&self, arc: Arc) -> Vec<Event<A>> {
+        let mut results = self.0.query(arc);
+        let offsets: Vec<Event<Time>> = self.2.query(arc);
+        for offset in offsets {
+            let arc = Arc {
+                start: offset.part.start + offset.value,
+                stop: offset.part.stop + offset.value,
+            };
+            results.extend(self.1.query(arc).into_iter().map(|e|
+                Event {
+                    whole: e.whole.map(|w| Arc {
+                        start: w.start - offset.value,
+                        stop: w.stop - offset.value,
+                    }),
+                    part: Arc {
+                        start: e.part.start - offset.value,
+                        stop: e.part.stop - offset.value,
+                    },
+                    value: e.value,
+                }
+            ));
+        }
+        results.sort_by_key(|e| e.part.start);
+        results
+    }
 }
 
 #[derive(Clone, Debug)]

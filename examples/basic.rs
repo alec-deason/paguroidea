@@ -3,17 +3,17 @@ use std::{
     collections::HashMap,
     io::Read,
     fs::File, io::BufReader,
+    env::args,
 };
 use num::rational::Rational;
 
 use paguroidea::*;
 
 fn main() {
-    println!("{:?}", (mini_notation::parse_pattern("bd"))(Arc { start: 0.into(), stop: 3.into()}));
-
     let mut samples = sound::SampleBank::new();
-    samples.add_sample_sets_from_dir("/home/alec/.local/share/SuperCollider/downloaded-quarks/Dirt-Samples/");
-    samples.add_sample_sets_from_dir("/home/alec/tidal/samples-extra/");
+    for dir in args().skip(1) {
+        samples.add_sample_sets_from_dir(dir);
+    }
     let player = sound::Player::new(samples);
 
     let pattern = sound(mini_notation::parse_pattern("<hi:1 hi*2> <~ hi:3 lo:2*2 hi*2> <~ lo:3*2 hi> <lo:1 lo:3*2>"));

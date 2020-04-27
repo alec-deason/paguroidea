@@ -483,3 +483,59 @@ pub fn chunk<A: 'static>(n: usize, f: impl Fn(Pattern<A>) -> Pattern<A> + Clone 
     }).collect()
    )
 }
+
+fn split_queries<A: 'static>(p: Pattern<A>) -> Pattern<A> {
+    pattern!(move |arc| {
+        arc_cycles_zw(arc).into_iter().flat_map(|arc| {
+            p(arc)
+        }).collect()
+    })
+}
+
+pub fn rev<A: 'static>(p: Pattern<A>) -> Pattern<A> {
+    fn make_whole_relative(e: Event<A>) -> Event<A> {
+        if e.whole.is_none() {
+            e
+        } else {
+            Event {
+                whole: Some(Arc { start: e.part.start-e.whole.unwrap().start, stop: e.whole.unwrap().stop-e.part.stop }),
+                part: e.part,
+                value: e.value,
+            }
+        }
+    }
+    fn make_whole_absolute(e: Event<A>) -> Event<A> {
+        if e.whole.is_none() {
+            e
+        } else {
+            Event {
+                whole: Some(Arc { start: e.part.start-e.whole.unwrap().stop, stop: e.part.stop+e.whole.unwrap().start }),
+                part: e.part,
+                value: e.value
+            }
+        }
+    }
+    fn mid_cycle(a: Arc) -> Time {
+        sam(a) + (1,2).into()
+    }
+    fn map_parts(f: fn(Arc) -> Arc, es: Vec<Event<A>>) -> Vec<Event<A>> {
+        es.map(|e| Event {
+            whole: e.whole,
+            part: f(e.part),
+            value: e.value
+        }).collect()
+    }
+    fn mirror_arc(mid: Time, a: Arc) -> Arc {
+        Arc {
+            start: mid - (a.stop-mid),
+            stop: mid + (mid-a.start)
+        }
+    }
+
+    split_queries(pattern!(move |arc| {
+        let na = mirror_arc(mid_cycle(arc), arc);
+        p(na).into_iter().map(|e| {
+            make_whole_absolute(map_parts(|a| mirror_arc(mid_cycle(arc), a), make_whole_relative(e)))
+        }).collect()
+    }))
+}

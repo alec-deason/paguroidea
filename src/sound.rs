@@ -53,8 +53,10 @@ impl SampleBank {
 
     pub fn add_sample_set_from_dir(&mut self, name: impl AsRef<str>, path: impl AsRef<Path>) {
         let mut samples = vec![];
-        for p in std::fs::read_dir(path).unwrap() {
-            let mut file = File::open(p.unwrap().path()).unwrap();
+        let mut paths:Vec<_> = std::fs::read_dir(path).unwrap().into_iter().map(|p| p.unwrap().path()).collect();
+        paths.sort();
+        for p in paths {
+            let mut file = File::open(p).unwrap();
             let mut data = vec![];
             file.read_to_end(&mut data);
             samples.push(data);

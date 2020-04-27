@@ -539,3 +539,7 @@ pub fn rev<A: 'static>(p: Pattern<A>) -> Pattern<A> {
         es.into_iter().map(make_whole_absolute).collect()
     }))
 }
+
+pub fn id<A: 'static>(p: Pattern<A>) -> Pattern<A> {
+    p
+}

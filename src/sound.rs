@@ -21,7 +21,7 @@ pub struct Player {
 struct InnerPlayer {
     device: Device,
     samples: SampleBank,
-    patterns: HashMap<String, Box<dyn Pattern<ControlMap> + Send>>,
+    patterns: HashMap<String, Pattern<ControlMap>>,
 }
 impl InnerPlayer {
     fn play_sample(&self, sample: &str, variation: usize, pan: f32) {
@@ -86,9 +86,9 @@ impl Player {
         }
     }
 
-    pub fn set_pattern(&self, name: impl AsRef<str>, pattern: impl Pattern<ControlMap> + Send + 'static) {
+    pub fn set_pattern(&self, name: impl AsRef<str>, pattern: Pattern<ControlMap>) {
         let patterns = &mut self.inner.lock().unwrap().patterns;
-        patterns.insert(name.as_ref().to_string(), box pattern);
+        patterns.insert(name.as_ref().to_string(), pattern);
     }
 
     pub fn start_playback(&self) {
@@ -102,7 +102,7 @@ impl Player {
                 {
                     let player = player.lock().unwrap();
                     for pattern in player.patterns.values() {
-                        pending_events.extend(pattern.query(Arc {
+                        pending_events.extend(pattern(Arc {
                             start: current,
                             stop: next,
                         }));

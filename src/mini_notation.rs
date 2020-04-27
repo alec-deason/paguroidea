@@ -4,30 +4,31 @@ use num::{
 };
 use pest::{Parser, iterators::Pair};
 
-use crate::{Pattern, Fast, Cat};
+use crate::{Pattern, Event, fast, cat, unit};
 
 #[derive(Parser)]
 #[grammar = "mini_notation.pest"]
 struct MiniNotationParser;
 
-pub fn parse_pattern(input: &str) -> Box<dyn Pattern<String>> {
+pub fn parse_pattern(input: &'static str) -> Pattern<String> {
     let pattern = MiniNotationParser::parse(Rule::pattern, input).unwrap_or_else(|e| panic!("{}", e)).next().unwrap();
     _parse_pattern(pattern)
 }
 
-fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String>> {
+fn _parse_pattern(pair: Pair<'static, Rule>) -> Pattern<String> {
     match pair.as_rule() {
         Rule::fast_repeat => {
             let sequence: Vec<_> = pair.into_inner().next().unwrap().into_inner().map(_parse_pattern).collect();
-            box Fast { speed: (sequence.len() as isize).into(), pattern: box Cat { subpatterns: sequence } }
+            let n = sequence.len();
+            fast((n as isize).into(), cat(sequence))
         },
         Rule::sequence => {
             let sequence: Vec<_> = pair.into_inner().map(_parse_pattern).collect();
-            box Fast { speed: (sequence.len() as isize).into(), pattern: box Cat { subpatterns: sequence } }
+            fast((sequence.len() as isize).into(), cat(sequence))
         },
         Rule::cycle => {
             let sequence: Vec<_> = pair.into_inner().next().unwrap().into_inner().map(_parse_pattern).collect();
-            box Cat { subpatterns: sequence }
+            cat(sequence)
         },
 
         Rule::modified_event => {
@@ -39,10 +40,10 @@ fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String>> {
 
             match operator.as_str() {
                 "*" => {
-                    box Fast { speed: Rational::from_f32(number).unwrap(), pattern: event }
+                    fast(Rational::from_f32(number).unwrap(), event)
                 },
                 "/" => {
-                    box Fast { speed: Rational::from_f32(1.0/number).unwrap(), pattern: event }
+                    fast(Rational::from_f32(1.0/number).unwrap(), event)
                 },
                 "!" => todo!(),
                 _ => unreachable!(),
@@ -54,7 +55,7 @@ fn _parse_pattern(pair: Pair<Rule>) -> Box<dyn Pattern<String>> {
         Rule::bracketed_pattern |
         Rule::event => _parse_pattern(pair.into_inner().next().unwrap()),
 
-        Rule::string => box pair.as_str().to_string(),
+        Rule::string => unit(pair.as_str().to_string()),
 
         Rule::number => todo!(),
 

@@ -1,4 +1,3 @@
-#![feature(box_syntax)]
 use std::{
     convert::TryInto,
     collections::HashMap,
@@ -12,6 +11,7 @@ pub mod mini_notation;
 pub mod sound;
 
 pub type Time = Rational;
+pub type Pattern<A> = std::sync::Arc<dyn Fn(Arc) -> Vec<Event<A>> + Send + Sync>;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Arc {
@@ -25,6 +25,23 @@ pub struct Event<A> {
     pub value: A,
 }
 
+impl<A> Event<A> {
+    pub fn whole_or_part(&self) -> Arc {
+        if let Some(a) = self.whole {
+            a
+        } else {
+            self.part
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! pattern {
+    ($inner:expr) => {
+        std::sync::Arc::new($inner)
+    }
+}
+
 
 impl<A: std::fmt::Debug> std::fmt::Debug for Event<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -36,34 +53,6 @@ impl<A: std::fmt::Debug> std::fmt::Debug for Event<A> {
     }
 }
 
-pub trait Pattern<A>: std::fmt::Debug + PatternClone<A> + Send {
-    fn query(&self, arc: Arc) -> Vec<Event<A>>;
-}
-
-pub trait PatternClone<A> {
-        fn clone_box(&self) -> Box<Pattern<A>>;
-}
-
-impl<T, A> PatternClone<A> for T
-where
-    T: 'static + Pattern<A> + Clone,
-{
-    fn clone_box(&self) -> Box<dyn Pattern<A>> {
-        Box::new(self.clone())
-    }
-}
-
-impl<A> Clone for Box<Pattern<A>> {
-    fn clone(&self) -> Box<dyn Pattern<A>> {
-        self.as_ref().clone_box()
-    }
-}
-
-impl<A: 'static> Pattern<A> for Box<dyn Pattern<A>> {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        self.as_ref().query(arc)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub enum Value {
@@ -105,48 +94,6 @@ impl TryInto<f32> for Value {
 #[derive(Clone, Debug)]
 pub struct ControlMap(pub HashMap<String, Value>);
 
-impl<A: Send + Clone + std::fmt::Debug+'static> Pattern<A> for A {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        arc_cycles_zw(arc).into_iter().filter_map(|a| {
-            if arc.start.is_integer() {
-                Some(Event {
-                    whole: Some(Arc { start: a.start, stop: a.start + 1 }),
-                    part: Arc { start: a.start, stop: (a.start + 1).min(a.stop) },
-                    value: self.clone(),
-                })
-            } else { None }
-        }).collect()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Fast<A> where A:Send+std::fmt::Debug {
-    pub speed: Rational,
-    pub pattern: Box<dyn Pattern<A>>,
-}
-impl<A: Send+std::fmt::Debug+Clone+'static> Pattern<A> for Fast<A> {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        let arc = Arc {
-            start: arc.start * self.speed,
-            stop: arc.stop * self.speed,
-        };
-        let mut result = self.pattern.query(arc);
-        for e in &mut result {
-            e.part.start = e.part.start / self.speed;
-            e.part.stop = e.part.stop / self.speed;
-            e.whole.map(|mut w| {
-                w.start = w.start / self.speed;
-                w.stop = w.stop / self.speed;
-            });
-        }
-        result
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Cat<A> where A:Send+std::fmt::Debug {
-    pub subpatterns: Vec<Box<dyn Pattern<A>>>,
-}
 
 fn arc_cycles(arc: Arc) -> Vec<Arc> {
     if arc.start >= arc.stop {
@@ -168,40 +115,9 @@ fn arc_cycles_zw(arc: Arc) -> Vec<Arc> {
     }
 }
 
-impl<A: Send+std::fmt::Debug+Clone+'static> Pattern<A> for Cat<A> {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        arc_cycles_zw(arc).into_iter().flat_map(|a| {
-            let n:Rational = (self.subpatterns.len() as isize).into();
-            let cyc = a.start.floor();
-            let mut i: Rational = cyc % n;
-            while i < 0.into() {
-                i += n;
-            }
-            let offset: Rational = (cyc - ((cyc - i) / n)).floor();
-            let i:usize = i.to_integer() as usize;
-            let a = Arc {
-                start: a.start - offset,
-                stop: a.stop - offset,
-            };
-            let mut result:Vec<Event<A>> = self.subpatterns[i].query(a);
-            for e in &mut result {
-                e.part.start += offset;
-                e.part.stop += offset;
-                e.whole.map(|mut w| {
-                    w.start += offset;
-                    w.stop += offset;
-                });
-            }
-            result
-        }).collect()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Sound(pub Box<dyn Pattern<String>>);
-impl Pattern<ControlMap> for Sound {
-    fn query(&self, arc: Arc) -> Vec<Event<ControlMap>> {
-        self.0.query(arc).into_iter().map(|e: Event<String>| {
+pub fn sound(p: Pattern<String>) -> Pattern<ControlMap> {
+    pattern!(move |arc| {
+        p(arc).into_iter().map(|e: Event<String>| {
             let mut m = ControlMap(HashMap::new());
             let parts:Vec<_> = e.value.split(":").collect();
             m.0.insert("s".to_string(), Value::String(parts[0].to_string()));
@@ -216,14 +132,11 @@ impl Pattern<ControlMap> for Sound {
                 value: m,
             }
         }).collect()
-    }
+    })
 }
-
-#[derive(Clone, Debug)]
-pub struct Pan(pub Box<dyn Pattern<f32>>);
-impl Pattern<ControlMap> for Pan {
-    fn query(&self, arc: Arc) -> Vec<Event<ControlMap>> {
-        self.0.query(arc).into_iter().map(|e| {
+pub fn pan(p: Pattern<f32>) -> Pattern<ControlMap> {
+    pattern!(move |arc| {
+        p(arc).into_iter().map(|e| {
             let mut m = ControlMap(HashMap::new());
             m.0.insert("pan".to_string(), Value::Float(e.value));
             Event {
@@ -232,28 +145,13 @@ impl Pattern<ControlMap> for Pan {
                 value: m,
             }
         }).collect()
-    }
+    })
 }
 
-#[derive(Clone)]
-pub struct ApplyFromLeft<A, B> where A: 'static, B: 'static {
-    f: fn(A, B) -> A,
-    lhs: Box<dyn Pattern<A>>,
-    rhs: Box<dyn Pattern<B>>,
-}
-impl<A: std::fmt::Debug, B> std::fmt::Debug for ApplyFromLeft<A, B> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ApplyFromLeft")
-            .field("f", &"...")
-            .field("lhs", &self.lhs)
-            .field("rhs", &self.rhs)
-            .finish()
-    }
-}
-impl<A: Send+std::fmt::Debug+Clone+'static, B: Clone+'static+std::fmt::Debug> Pattern<A> for ApplyFromLeft<A, B> {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        let mut lhs:Vec<Event<A>> = self.lhs.query(arc);
-        let mut rhs = self.rhs.query(arc);
+pub fn apply_from_left<A: 'static + Clone, B: 'static + Clone>(f: fn(A, B) -> A, lhs: Pattern<A>, rhs: Pattern<B>) -> Pattern<A> {
+    pattern!(move |arc| {
+        let mut lhs:Vec<Event<A>> = lhs(arc);
+        let mut rhs = rhs(arc);
         let mut results = vec![];
         if lhs.len() == 0 || rhs.len() == 0 {
             return results;
@@ -276,112 +174,128 @@ impl<A: Send+std::fmt::Debug+Clone+'static, B: Clone+'static+std::fmt::Debug> Pa
                 results.push(Event {
                     whole: current_l.whole,
                     part: current_l.part,
-                    value: (self.f)(current_l.value.clone(), current_r.value.clone()),
+                    value: f(current_l.value.clone(), current_r.value.clone()),
                 });
             }
         }
         results
-    }
+    })
 }
 
-pub fn jux_by(n: impl Pattern<f32>, f: impl Fn(&dyn Pattern<ControlMap>) -> Box<dyn Pattern<ControlMap>>, p: impl Pattern<ControlMap> + 'static) -> Box<dyn Pattern<ControlMap>> {
-    box Stack(vec![
-        box ApplyFromLeft {
-            f: |state:ControlMap, pan| {
+pub fn jux_by(n: Pattern<f32>, f: fn(Pattern<ControlMap>) -> Pattern<ControlMap>, p: Pattern<ControlMap>) -> Pattern<ControlMap> {
+    stack(vec![
+        apply_from_left(
+            |state, pan| {
                 let mut state = state.clone();
                 state.0.insert("pan".to_string(), Value::Float(pan));
                 state
             },
-            lhs: p.clone_box(),
-            rhs: n.clone_box(),
-        },
-        box ApplyFromLeft {
-            f: |state:ControlMap, pan| {
+            f(p.clone()),
+            n.clone()
+        ),
+        apply_from_left(
+            |state, pan| {
                 let mut state = state.clone();
                 state.0.insert("pan".to_string(), Value::Float(1.0-pan));
                 state
             },
-            lhs: f(&p),
-            rhs: n.clone_box(),
-        },
+            p,
+            n
+        ),
     ])
 }
 
-#[derive(Clone, Debug)]
-pub struct Off<A>(pub Box<dyn Pattern<A>>, pub Box<dyn Pattern<A>>, pub Box<dyn Pattern<Time>>) where A: std::fmt::Debug;
-impl<A: Send+std::fmt::Debug + Clone + 'static> Pattern<A> for Off<A> {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        let mut results = self.0.query(arc);
-        let offsets: Vec<Event<Time>> = self.2.query(arc);
-        for offset in offsets {
-            let arc = Arc {
-                start: offset.part.start + offset.value,
-                stop: offset.part.stop + offset.value,
-            };
-            results.extend(self.1.query(arc).into_iter().map(|e|
-                Event {
-                    whole: e.whole.map(|w| Arc {
-                        start: w.start - offset.value,
-                        stop: w.stop - offset.value,
-                    }),
-                    part: Arc {
-                        start: e.part.start - offset.value,
-                        stop: e.part.stop - offset.value,
-                    },
-                    value: e.value,
-                }
-            ));
-        }
-        results.sort_by_key(|e| e.part.start);
-        results
+pub fn sect(a: Arc, b: Arc) -> Arc {
+    Arc {
+        start: a.start.min(b.start),
+        stop: a.stop.max(b.stop),
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Stack<A>(pub Vec<Box<dyn Pattern<A>>>) where A: std::fmt::Debug;
-impl<A: Send+std::fmt::Debug + Clone + 'static> Pattern<A> for Stack<A> {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        let mut results:Vec<_> = self.0.iter().flat_map(
-            |pattern|
-            pattern.query(arc)
-        ).collect();
-        results.sort_by_key(|e| e.part.start);
-        results
+pub fn sub_arc(a: Arc, b: Arc) -> Option<Arc> {
+    let c = sect(a, b);
+    if c.start == c.stop && c.start == a.stop && a.start < a.stop {
+        None
+    } else if c.start == c.stop && c.start == b.stop && b.start < b.stop {
+        None
+    } else if c.start <= c.stop {
+        Some(c)
+    } else {
+        None
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Rev<A>(pub Box<dyn Pattern<A>>) where A: std::fmt::Debug;
-impl<A: Send+std::fmt::Debug + Clone + 'static> Pattern<A> for Rev<A> {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        let mut current = arc.start;
-        let mut results:Vec<Event<A>> = vec![];
-        while current < arc.stop {
-            let start = current;
-            let stop = (current+1).min(arc.stop);
-            current = stop;
-            let mut mid:Rational = (1, 2).into();
-            mid += start.floor();
-            let (new_start, new_stop) = (mid - (stop-mid), (mid+(mid-start)));
-            let a = Arc { start: new_start, stop: new_stop };
-            results.extend(
-                self.0.query(a).into_iter().map(|e| {
-                    let (new_start, nev_stop) = (mid - (e.part.stop-mid), (mid+(mid-e.part.start)));
-                    Event {
-                        //FXME: I don't really understand what 'whole' is for and this is certainly not handling it corectly
-                        whole: e.whole,
-                        part: Arc {
-                            start: new_start,
-                            stop: new_stop,
-                        },
-                        value: e.value,
-                    }
-                })
-            );
-        }
-        results
-    }
+pub fn inner_join<A: 'static>(p: Pattern<Pattern<A>>) -> Pattern<A> {
+    pattern!(move |arc|
+        p(arc).into_iter().filter_map(|e|
+            sub_arc(arc, e.part).and_then(|p|
+                sub_arc(p, arc)
+            ).map(|arc|
+                (e.value)(arc)
+            )
+        ).flatten().collect()
+    )
 }
+
+pub fn superimpose<A: 'static>(f: impl Fn(&Pattern<A>) -> Pattern<A>, p: Pattern<A>) -> Pattern<A> {
+    let np = f(&p);
+    stack(vec![
+        p,
+        np
+    ])
+}
+
+fn with_result_arc<A: 'static>(f: impl Fn(Arc)->Arc + Send + Sync + 'static, p: Pattern<A>) -> Pattern<A> {
+    pattern!(move |arc| {
+        p(arc).into_iter().map(|e| Event {
+            whole: e.whole.map(|w| f(w)),
+            part: f(e.part),
+            value: e.value,
+        }).collect()
+    })
+}
+
+fn with_result_time<A: 'static>(f: impl Fn(Time) -> Time + Send + Sync + 'static, p: Pattern<A>) -> Pattern<A> {
+    with_result_arc(move |arc| Arc { start: f(arc.start), stop: f(arc.stop) }, p)
+}
+
+fn with_query_arc<A: 'static>(f: impl Fn(Arc)->Arc + Send + Sync + 'static, p: Pattern<A>) -> Pattern<A> {
+    pattern!(move |arc| {
+        let arc = f(arc);
+        p(arc)
+    })
+}
+
+fn with_query_time<A: 'static>(f: impl Fn(Time) -> Time + Send + Sync + 'static, p: Pattern<A>) -> Pattern<A> {
+    with_query_arc(move |arc:Arc| Arc { start: f(arc.start), stop: f(arc.stop) }, p)
+}
+
+pub fn rot_l<A: 'static>(t: Time, p: Pattern<A>) -> Pattern<A> {
+    with_result_time(move |ot| ot - t, with_query_time(move |ot| t + ot, p))
+}
+pub fn rot_r<A: 'static>(t: Time, p: Pattern<A>) -> Pattern<A> {
+    rot_l(-t, p)
+}
+
+fn _off<A: 'static>(t: Time, f: impl Fn(&Pattern<A>) -> Pattern<A> + Send + Sync + 'static, p: Pattern<A>) -> Pattern<A> {
+    superimpose(move |pp| f(&rot_r(t, pp.clone())), p)
+}
+
+pub fn off<A: 'static>(tp: Pattern<Time>, f: impl Fn(&Pattern<A>) -> Pattern<A> + Send + Sync + 'static + Clone, p: Pattern<A>) -> Pattern<A> {
+    inner_join(pattern!(move |arc| {
+        let p = p.clone();
+        let f = f.clone();
+        tp(arc).into_iter().map(move |e| {
+            Event {
+                whole: e.whole,
+                part: e.part,
+                value: _off(e.value, f.clone(), p.clone())
+            }
+        }).collect()
+    }))
+}
+
+
 
 fn time_rand(t: Time) -> f32 {
     let x = (t*t) / 1000000;
@@ -394,16 +308,178 @@ fn time_rand(t: Time) -> f32 {
     rng.gen()
 }
 
-//FIXME: this should take a f32 pattern not a static value
-#[derive(Clone, Debug)]
-pub struct Sometimes<A>(pub Box<dyn Pattern<A>>, pub Box<dyn Pattern<A>>, pub f32) where A: std::fmt::Debug;
-impl<A: Send+std::fmt::Debug + Clone + 'static> Pattern<A> for Sometimes<A> {
-    fn query(&self, arc: Arc) -> Vec<Event<A>> {
-        let mut results: Vec<_> = self.0.query(arc).into_iter()
-            .filter(|e| time_rand(e.part.start) > self.2).chain(
-                self.1.query(arc).into_iter()
-                .filter(|e| time_rand(e.part.start) <= self.2)).collect();
+pub fn overlay<A: 'static>(a: Pattern<A>, b: Pattern<A>) -> Pattern<A> {
+    pattern!(move |arc| {
+        let mut events:Vec<_> = a(arc).into_iter().chain(b(arc).into_iter()).collect();
+        events.sort_by_key(|e| e.part.start);
+        events
+    })
+}
+
+fn t_param<A: 'static, T1: 'static, T2: 'static + Clone + Send + Sync>(f: impl Fn(T1, T2) -> Pattern<A> + Send + Sync +'static, tv: Pattern<T1>, p: T2) -> Pattern<A> {
+    inner_join(pattern!(move |arc| {
+        tv(arc).into_iter().map(|e| Event {
+            whole: e.whole,
+            part: e.part,
+            value: f(e.value, p.clone())
+        }).collect()
+    }))
+}
+
+fn _degrade_by<A: 'static>(prob: f32, p: Pattern<A>) -> Pattern<A> {
+    pattern!(move |arc| {
+        p(arc).into_iter().filter(move |e| {
+            let draw = time_rand((arc.start + arc.stop)/2isize);
+            draw > prob
+        }).collect()
+    })
+}
+
+pub fn degrade_by<A: 'static>(prob: Pattern<f32>, p: Pattern<A>) -> Pattern<A> {
+    t_param(|prob, p| {
+        _degrade_by(prob, p)
+    }, prob, p)
+}
+
+fn _undegrade_by<A: 'static>(prob: f32, p: Pattern<A>) -> Pattern<A> {
+    pattern!(move |arc| {
+        p(arc).into_iter().filter(|e| {
+            let draw = time_rand((arc.start + arc.stop)/2isize);
+            draw <= prob
+        }).collect()
+    })
+}
+
+pub fn undegrade_by<A: 'static>(prob: Pattern<f32>, p: Pattern<A>) -> Pattern<A> {
+    t_param(|prob, p| {
+        _undegrade_by(prob, p)
+    }, prob, p)
+}
+
+pub fn filter_values<A: 'static>(f: impl Fn(&A) -> bool + Send + Sync + 'static, p: Pattern<A>) -> Pattern<A> {
+    pattern!(move |arc| p(arc).into_iter().filter(|e| f(&e.value)).collect())
+}
+
+pub fn sometimes_by<A: 'static>(x: Pattern<f32>, f: impl Fn(Pattern<A>) -> Pattern<A> + Send + Sync, p: Pattern<A>) -> Pattern<A> {
+    overlay(degrade_by(x.clone(), p.clone()), undegrade_by(x, f(p)))
+}
+
+
+pub fn unit<A: Clone + Sync + Send + 'static>(v: A) -> Pattern<A> {
+    pattern!(move |arc| {
+        arc_cycles_zw(arc).into_iter().filter_map(|a| {
+            if arc.start.is_integer() {
+                Some(Event {
+                    whole: Some(Arc { start: a.start, stop: a.start + 1 }),
+                    part: Arc { start: a.start, stop: (a.start + 1).min(a.stop) },
+                    value: v.clone(),
+                })
+            } else { None }
+        }).collect()
+    })
+}
+
+pub fn fast<A: 'static>(r: Time, p: Pattern<A>) -> Pattern<A> {
+    pattern!(move |arc| {
+        if r == 0.into() {
+            vec![]
+        } else if r < 0.into() {
+            todo!()
+            //rev(arc, |arc| fast(arc, -r, p))
+        } else {
+            let arc = Arc {
+                start: arc.start * r,
+                stop: arc.stop * r,
+            };
+            p(arc).into_iter().map(|e| {
+                Event {
+                    whole: e.whole.map(|w| Arc {
+                        start: w.start / r,
+                        stop: w.stop / r,
+                    }),
+                    part: Arc {
+                        start: e.part.start / r,
+                        stop: e.part.stop / r,
+                    },
+                    value: e.value,
+                }
+            }).collect()
+        }
+    })
+}
+
+pub fn stack<A: 'static>(ps: Vec<Pattern<A>>) -> Pattern<A> {
+    std::sync::Arc::new(move |arc| {
+        let mut results = vec![];
+        for p in &ps {
+            results.extend(p(arc).into_iter());
+        }
         results.sort_by_key(|e| e.part.start);
         results
-    }
+    })
+}
+
+pub fn cat<A: 'static>(ps: Vec<Pattern<A>>) -> Pattern<A> {
+    let n = ps.len();
+    std::sync::Arc::new(move |arc: Arc| {
+        let f = |arc: Arc| {
+            let cyc = arc.start.floor();
+            let mut i = cyc % n as isize;
+            while i < 0isize.into() {
+                i += n as isize;
+            }
+            let offset = cyc - ((cyc - i) / n as isize).floor();
+            let arc = Arc {
+                start: arc.start - offset,
+                stop: arc.stop - offset
+            };
+            (ps[i.to_integer() as usize])(arc).into_iter().map(move |e| Event {
+                whole: e.whole.map(|w| Arc {
+                    start: w.start + offset,
+                    stop: w.stop + offset
+                }),
+                part: Arc {
+                    start: e.part.start + offset,
+                    stop: e.part.stop + offset,
+                },
+                value: e.value
+            })
+        };
+        arc_cycles_zw(arc).into_iter().flat_map(|arc| f(arc)).collect()
+    })
+}
+
+pub fn filter_when<A: 'static>(test: impl Fn(Time) -> bool + Clone + Send + Sync + 'static, p: Pattern<A>) -> Pattern<A> {
+    pattern!(move |arc| {
+        let test = test.clone();
+        p(arc).into_iter().filter(move |e| test(e.whole_or_part().start)).collect()
+    })
+}
+
+fn sam(t: Time) -> Time {
+    t.floor()
+}
+
+fn cycle_pos(t: Time) -> Time {
+    t - sam(t)
+}
+
+pub fn within<A: 'static>(a: Arc, f: impl Fn(Pattern<A>)->Pattern<A> + Send + Sync + 'static, p: Pattern<A>) -> Pattern<A> {
+    stack(vec![
+       filter_when(move |t| {
+           let cp = cycle_pos(t);
+           cp >= a.start && cp < a.stop
+       }, f(p.clone())),
+       filter_when(move |t| {
+           let cp = cycle_pos(t);
+           !(cp >= a.start && cp < a.stop)
+       }, p),
+    ])
+}
+
+pub fn chunk<A: 'static>(n: usize, f: impl Fn(Pattern<A>) -> Pattern<A> + Clone + Send + Sync + 'static, p: Pattern<A>) -> Pattern<A> {
+    cat((0..n-1).map(move |i| {
+        within(Arc { start: (i as isize % n as isize).into(), stop: ((i+1) as isize % n as isize).into() }, f.clone(), p.clone())
+    }).collect()
+   )
 }
